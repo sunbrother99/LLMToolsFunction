@@ -1,0 +1,9 @@
+log_path: "toolcall_logs.json"
+train_data_path: "qwen_toolcall_train.jsonl"
+model_name_or_path: "Qwen/Qwen-7B-Chat"
+output_dir: "./checkpoints/qwen-toolcall"
+batch_size: 2
+num_train_epochs: 3
+save_steps: 100
+logging_steps: 20
+max_length: 1024
