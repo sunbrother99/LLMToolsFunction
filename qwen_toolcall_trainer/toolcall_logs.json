@@ -1,0 +1,16 @@
+[
+  {
+    "user": "查一下上海的天气",
+    "tool_name": "get_weather",
+    "arguments": {
+      "city": "上海"
+    }
+  },
+  {
+    "user": "我想知道故宫的位置",
+    "tool_name": "map_lookup",
+    "arguments": {
+      "place": "故宫"
+    }
+  }
+]
