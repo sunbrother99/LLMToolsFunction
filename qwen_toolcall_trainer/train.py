@@ -30,6 +30,9 @@ def parse_log_to_chatml(input_log_path, output_jsonl_path):
                 "expected_tool": tool_name,
                 "expected_args": arguments,
                 "expected_chain": chain
+                # 增加正例，反例
+                # "rationale": log.get("rationale", ""),
+                # "negative": log.get("negative", False)
             }
             out.write(json.dumps(formatted, ensure_ascii=False) + "\n")
 
