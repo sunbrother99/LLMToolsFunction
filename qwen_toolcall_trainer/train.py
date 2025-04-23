@@ -1,6 +1,7 @@
 # qwen_toolcall_trainer/train.py
 import json
 import argparse
+from collections import defaultdict
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM,
@@ -35,11 +36,16 @@ def evaluate_model(model, tokenizer, dataset, max_length):
     total = 0
     partial_match = 0
     failed_cases = []
+    tool_stats = defaultdict(lambda: {"total": 0, "correct": 0})
 
     for example in dataset:
         input_ids = tokenizer(example['input'], return_tensors='pt', truncation=True, max_length=max_length).input_ids
         output = model.generate(input_ids, max_length=max_length)
         response = tokenizer.decode(output[0], skip_special_tokens=True)
+
+        tool_name = example["expected_tool"]
+        tool_stats[tool_name]["total"] += 1
+        total += 1
 
         try:
             start = response.index('<function_call>') + len('<function_call>')
@@ -47,10 +53,10 @@ def evaluate_model(model, tokenizer, dataset, max_length):
             content = response[start:end].strip()
             parsed = json.loads(content)
 
-            total += 1
-            if parsed["name"] == example["expected_tool"]:
+            if parsed["name"] == tool_name:
                 if parsed["arguments"] == example["expected_args"]:
                     correct += 1
+                    tool_stats[tool_name]["correct"] += 1
                 else:
                     pred_args = parsed["arguments"]
                     exp_args = example["expected_args"]
@@ -63,13 +69,18 @@ def evaluate_model(model, tokenizer, dataset, max_length):
                 failed_cases.append((example['input'], parsed))
 
         except Exception as e:
-            total += 1
             failed_cases.append((example['input'], str(e)))
 
     print("\n--- 自动化评估 ---")
     print(f"Tool Call Accuracy: {correct}/{total} = {correct / total:.2%}")
     print(f"Partial Match (some args correct): {partial_match}/{total} = {partial_match / total:.2%}")
     print(f"Total Failures: {len(failed_cases)}")
+
+    print("\n[工具调用准确率分布]:")
+    for tool, stats in tool_stats.items():
+        acc = stats["correct"] / stats["total"] if stats["total"] > 0 else 0.0
+        print(f" - {tool}: {stats['correct']}/{stats['total']} = {acc:.2%}")
+
     for case in failed_cases[:5]:
         print("\n[Failed Sample]")
         print("Input:", case[0])
