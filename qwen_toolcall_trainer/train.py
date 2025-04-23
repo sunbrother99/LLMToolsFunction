@@ -19,6 +19,7 @@ def parse_log_to_chatml(input_log_path, output_jsonl_path):
             user_query = log["user"]
             tool_name = log["tool_name"]
             arguments = log["arguments"]
+            chain = log.get("chain", [])
 
             formatted = {
                 "input": (
@@ -27,7 +28,8 @@ def parse_log_to_chatml(input_log_path, output_jsonl_path):
                     f"<|im_start|>assistant\n<function_call>{{\"name\": \"{tool_name}\", \"arguments\": {json.dumps(arguments, ensure_ascii=False)}}}</function_call><|im_end|>"
                 ),
                 "expected_tool": tool_name,
-                "expected_args": arguments
+                "expected_args": arguments,
+                "expected_chain": chain
             }
             out.write(json.dumps(formatted, ensure_ascii=False) + "\n")
 
@@ -37,6 +39,8 @@ def evaluate_model(model, tokenizer, dataset, max_length):
     partial_match = 0
     failed_cases = []
     tool_stats = defaultdict(lambda: {"total": 0, "correct": 0})
+    chain_correct = 0
+    chain_total = 0
 
     for example in dataset:
         input_ids = tokenizer(example['input'], return_tensors='pt', truncation=True, max_length=max_length).input_ids
@@ -68,6 +72,17 @@ def evaluate_model(model, tokenizer, dataset, max_length):
             else:
                 failed_cases.append((example['input'], parsed))
 
+            # Chain-level evaluation
+            if example.get("expected_chain"):
+                chain_total += 1
+                match = True
+                for idx, step in enumerate(example["expected_chain"]):
+                    if idx == 0 and (parsed["name"] != step["name"] or parsed["arguments"] != step["arguments"]):
+                        match = False
+                        break
+                if match:
+                    chain_correct += 1
+
         except Exception as e:
             failed_cases.append((example['input'], str(e)))
 
@@ -80,6 +95,9 @@ def evaluate_model(model, tokenizer, dataset, max_length):
     for tool, stats in tool_stats.items():
         acc = stats["correct"] / stats["total"] if stats["total"] > 0 else 0.0
         print(f" - {tool}: {stats['correct']}/{stats['total']} = {acc:.2%}")
+
+    if chain_total > 0:
+        print(f"\nChain-level Accuracy: {chain_correct}/{chain_total} = {chain_correct / chain_total:.2%}")
 
     for case in failed_cases[:5]:
         print("\n[Failed Sample]")
