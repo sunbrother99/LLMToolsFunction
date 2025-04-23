@@ -7,6 +7,7 @@ from transformers import (
     Trainer, TrainingArguments,
     DataCollatorForLanguageModeling
 )
+from sklearn.model_selection import train_test_split
 
 def parse_log_to_chatml(input_log_path, output_jsonl_path):
     with open(input_log_path, "r", encoding="utf-8") as f:
@@ -23,9 +24,56 @@ def parse_log_to_chatml(input_log_path, output_jsonl_path):
                     "<|im_start|>system\n你是一个可以调用工具的智能助手<|im_end|>\n"
                     f"<|im_start|>user\n{user_query}<|im_end|>\n"
                     f"<|im_start|>assistant\n<function_call>{{\"name\": \"{tool_name}\", \"arguments\": {json.dumps(arguments, ensure_ascii=False)}}}</function_call><|im_end|>"
-                )
+                ),
+                "expected_tool": tool_name,
+                "expected_args": arguments
             }
             out.write(json.dumps(formatted, ensure_ascii=False) + "\n")
+
+def evaluate_model(model, tokenizer, dataset, max_length):
+    correct = 0
+    total = 0
+    partial_match = 0
+    failed_cases = []
+
+    for example in dataset:
+        input_ids = tokenizer(example['input'], return_tensors='pt', truncation=True, max_length=max_length).input_ids
+        output = model.generate(input_ids, max_length=max_length)
+        response = tokenizer.decode(output[0], skip_special_tokens=True)
+
+        try:
+            start = response.index('<function_call>') + len('<function_call>')
+            end = response.index('</function_call>')
+            content = response[start:end].strip()
+            parsed = json.loads(content)
+
+            total += 1
+            if parsed["name"] == example["expected_tool"]:
+                if parsed["arguments"] == example["expected_args"]:
+                    correct += 1
+                else:
+                    pred_args = parsed["arguments"]
+                    exp_args = example["expected_args"]
+                    matched_keys = set(pred_args.items()) & set(exp_args.items())
+                    if len(matched_keys) >= 1:
+                        partial_match += 1
+                    else:
+                        failed_cases.append((example['input'], parsed))
+            else:
+                failed_cases.append((example['input'], parsed))
+
+        except Exception as e:
+            total += 1
+            failed_cases.append((example['input'], str(e)))
+
+    print("\n--- 自动化评估 ---")
+    print(f"Tool Call Accuracy: {correct}/{total} = {correct / total:.2%}")
+    print(f"Partial Match (some args correct): {partial_match}/{total} = {partial_match / total:.2%}")
+    print(f"Total Failures: {len(failed_cases)}")
+    for case in failed_cases[:5]:
+        print("\n[Failed Sample]")
+        print("Input:", case[0])
+        print("Predicted:", case[1])
 
 def main():
     parser = argparse.ArgumentParser()
@@ -38,7 +86,10 @@ def main():
 
     parse_log_to_chatml(config["log_path"], config["train_data_path"])
 
-    dataset = load_dataset("json", data_files=config["train_data_path"])['train']
+    full_dataset = load_dataset("json", data_files=config["train_data_path"])['train']
+    train_test = full_dataset.train_test_split(test_size=0.2, seed=42)
+    train_dataset = train_test['train']
+    eval_dataset = train_test['test']
 
     tokenizer = AutoTokenizer.from_pretrained(config["model_name_or_path"], trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(config["model_name_or_path"], trust_remote_code=True)
@@ -46,7 +97,8 @@ def main():
     def tokenize(example):
         return tokenizer(example['input'], truncation=True, padding='max_length', max_length=config["max_length"])
 
-    tokenized_dataset = dataset.map(tokenize)
+    tokenized_train = train_dataset.map(tokenize)
+    tokenized_eval = eval_dataset.map(tokenize)
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     training_args = TrainingArguments(
@@ -55,6 +107,8 @@ def main():
         per_device_train_batch_size=config["batch_size"],
         save_steps=config["save_steps"],
         logging_steps=config["logging_steps"],
+        evaluation_strategy="epoch",
+        eval_steps=1,
         fp16=True,
         save_total_limit=2,
         report_to="none"
@@ -63,12 +117,15 @@ def main():
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_dataset,
+        train_dataset=tokenized_train,
+        eval_dataset=tokenized_eval,
         tokenizer=tokenizer,
         data_collator=data_collator
     )
 
     trainer.train()
+
+    evaluate_model(model, tokenizer, eval_dataset, config["max_length"])
 
 if __name__ == "__main__":
     main()
