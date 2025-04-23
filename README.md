@@ -21,9 +21,12 @@ Qwen 微调通常使用类似如下格式的对话记录（每条数据是完整
 Qwen 通过 `<function_call>{...}</function_call>` 标签标识函数调用。
 
 额外的
+
 使用 SFT 训练的数据格式通常为：
 
 📄 常见格式：OpenAI、ChatGLM、Baichuan、Qwen 均支持这种格式
+
+```json
 {
   "messages": [
     {"role": "system", "content": "你是一个可以调用内部工具的智能助手"},
@@ -37,6 +40,8 @@ Qwen 通过 `<function_call>{...}</function_call>` 标签标识函数调用。
     }
   ]
 }
+```
+
 最上面的qwen格式是qwen模型的专用格式，如果以openai的接口形式组装，则是【常见格式】这种。
 
 ---
