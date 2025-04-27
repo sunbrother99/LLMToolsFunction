@@ -83,7 +83,9 @@ OpenAI 的模型行为（GPT-4 / GPT-4o）：
 
 你在 prompt 或 system message 中告诉它：
 
+```text
 如果你无法确定某个参数值，不要编造，直接返回 null 或不要包含该字段。
+```
 
 让它返回格式类似：
 
