@@ -130,7 +130,15 @@ def construct_final_tool_call(parsed, user_context, fallback):
     }
 ```
 
+其中user_context是自定义的用户上下文，对每个用户输入的query都携带，方便真实参数的填充
+```json
+user_context = {
+                "city":"北京",
+                "date":"2025-04-27",
+                "location":"明天生活馆"
+                }
 
+```
 
 
 
