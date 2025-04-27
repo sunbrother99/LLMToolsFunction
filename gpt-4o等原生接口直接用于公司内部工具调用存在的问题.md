@@ -38,7 +38,19 @@ tools = [
 ]
 ```
 
-从用户的query中无法解析出city,location,open_now等参数，但由于OpenAI function-calling 体系中的一个「默认行为陷阱」：
+4o原生接口直接使用工具指的是将可用工具列表通过OpenAI接口的`tools`参数传递给LLM，让模型自行规划工具调用路径，此方式虽然简单，但完全依赖模型本身的工具使用能力，对于没有被模型训练过的工具表现不好。
+
+常见的调用方式为:
+```python
+ response = openai.chat.completions.create(
+            model="gpt-4o",  # 或 gpt-4o
+            messages=messages,
+            tools=tool_list, #可用工具列表，按照openai定义好的方式传入
+            tool_choice="auto"
+        )
+```
+
+这种方式从用户的query中无法解析出city,location,open_now等参数，但由于OpenAI function-calling 体系中的一个「默认行为陷阱」：
 
 ✅ 它知道参数必须被填满
 
